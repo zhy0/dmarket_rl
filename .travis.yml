@@ -2,8 +2,13 @@ language: python
 python:
   - "3.6"
   - "3.7"
-  - "3.8"
+
 install:
   - pip install -r requirements.txt
+  - pip install codecov pytest-cov
+
 script:
-  - pytest
+  - pytest --cov=./
+
+after_success:
+  - codecov -t $CODECOV_TOKEN
