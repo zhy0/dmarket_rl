@@ -1,4 +1,2 @@
 gym
 numpy>=1.17
-stable_baselines
-tensorflow==1.14
