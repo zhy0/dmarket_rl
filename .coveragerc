@@ -1,2 +1,5 @@
 [run]
-omit = dmarket/_version.py
+omit =
+    versioneer.py
+    */_version.py
+    dmarket/tests/*
