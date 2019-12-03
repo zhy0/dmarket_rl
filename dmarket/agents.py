@@ -69,7 +69,7 @@ class UniformRandomAgent(MarketAgent):
     max_factor: float, optional (default=0.5)
         Must be nonnegative.
     """
-    def __init__(self, role, reservation_price, max_factor=0.5, name=None):
+    def __init__(self, role, reservation_price, name=None, max_factor=0.5):
         self.max_factor = 0.5
         super().__init__(role, reservation_price, name)
 
@@ -110,8 +110,8 @@ class GymRLAgent(MarketAgent):
         A factor of the reservation price that determines the range of prices
         the agent can offer. See ``UniformRandomAgent``.
     """
-    def __init__(self, role, reservation_price, model=None,
-                 discretization=20, max_factor=0.5, name=None):
+    def __init__(self, role, reservation_price, name=None, model=None,
+                 discretization=20, max_factor=0.5):
         self.model = model
         self.discretization = discretization
         self.max_factor = max_factor
