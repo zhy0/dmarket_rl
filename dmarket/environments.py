@@ -2,6 +2,7 @@ import numpy as np
 import gym
 from gym.spaces import Discrete, Box
 from dmarket.engine import MarketEngine
+from dmarket.info_settings import TimeInformationWrapper
 
 
 class SingleAgentTrainingEnv(gym.Env):
@@ -36,15 +37,27 @@ class SingleAgentTrainingEnv(gym.Env):
     market: MarketEngine object
         The market object used
 
+    Notes
+    -----
+    If using settings that contain market time information, the RL agent will
+    NOT have access to the time. This is because at the moment baselines
+    algorithms do not support Tuple observation spaces.
+
     """
     def __init__(self, rl_agent, fixed_agents, setting, max_steps=30):
 
         self.rl_agent = rl_agent
         self.fixed_agents = fixed_agents
         self.fixed_agent_ids = [id(agent) for agent in fixed_agents]
-        self.setting = setting
         self.action_space = Discrete(rl_agent.discretization)
-        self.observation_space = setting.observation_space
+        self.setting = setting
+
+        if isinstance(setting, TimeInformationWrapper):
+            self.observation_space = setting.base_setting.observation_space
+            self.rl_setting = setting.base_setting
+        else:
+            self.observation_space = setting.observation_space
+            self.rl_setting = setting
 
         buyer_ids =  [
             id(agent)
@@ -62,7 +75,7 @@ class SingleAgentTrainingEnv(gym.Env):
     def reset(self):
         """Resets the current environment."""
         self.market.reset()
-        return self.setting.get_state(id(self.rl_agent), self.market)
+        return self.rl_setting.get_state(id(self.rl_agent), self.market)
 
     def get_offers(self, agents, observations):
         """Compute offers for a list of agents given their observations."""
@@ -102,7 +115,7 @@ class SingleAgentTrainingEnv(gym.Env):
         offers[id(self.rl_agent)] = self.rl_agent.action_to_price(action)
 
         deals = self.market.step(offers)
-        observation = self.setting.get_state(id(self.rl_agent), self.market)
+        observation = self.rl_setting.get_state(id(self.rl_agent), self.market)
         reward = self.get_reward(self.rl_agent, deals)
         done = (id(self.rl_agent) in self.market.done)
 
