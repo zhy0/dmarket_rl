@@ -45,7 +45,7 @@ class MarketAgent:
         offer: float
             Offer to made to the market.
         """
-        pass
+        raise NotImplementedError
 
 
 class ConstantAgent(MarketAgent):
@@ -54,7 +54,47 @@ class ConstantAgent(MarketAgent):
         return self.reservation_price
 
 
-class UniformRandomAgent(MarketAgent):
+class FactorAgent(MarketAgent):
+    """
+    Abstract agent class that determines an offer range based on a
+    multiplicative factor.
+
+    Children of this class will take an argument ``max_factor`` and use this
+    together with its reservation price to determine an interval to offer in.
+    For a seller, the agent will have the range ``[r, (1+max_factor)*r]`` with
+    ``r`` the reservation price. For a buyer, this interval would be
+    ``[(1-max_factor)*r, r]``.
+
+    Parameters
+    ----------
+    max_factor: float, optional (default=0.5)
+        Must be between 0 and 1.
+
+    Attributes
+    ----------
+    _s: int
+        A sign derived from the role of the agent, +1 means seller, -1 means
+        buyer.
+    _c: float
+        A factor used to compute the interval range.
+    _a: float
+        Lower bound of the offer range.
+    _b: float
+        Upper bound of the offer range.
+    """
+
+    def __init__(self, role, reservation_price, name=None, max_factor=0.5):
+        self.max_factor = max_factor
+        super().__init__(role, reservation_price, name)
+
+        r = reservation_price
+        self._s = (-1 if role == 'buyer' else 1)
+        self._c = (1 + self._s * max_factor)
+        self._a = min(r, self._c*r) # minimum agent can offer
+        self._b = max(r, self._c*r) # maximum agent can offer
+
+
+class UniformRandomAgent(FactorAgent):
     """
     Random agent that offers uniformly random prices.
 
@@ -67,23 +107,63 @@ class UniformRandomAgent(MarketAgent):
     Parameters
     ----------
     max_factor: float, optional (default=0.5)
-        Must be nonnegative.
+        Must be between 0 and 1.
     """
-    def __init__(self, role, reservation_price, name=None, max_factor=0.5):
-        self.max_factor = 0.5
-        super().__init__(role, reservation_price, name)
-
-        r = reservation_price
-        self._s = (-1 if role == 'buyer' else 1)
-        self._c = (1 + self._s * max_factor)
-        self._a = min(r, self._c*r) # minimum agent can offer
-        self._b = max(r, self._c*r) # maximum agent can offer
 
     def get_offer(self, observation):
         return np.random.uniform(self._a, self._b)
 
 
-class GymRLAgent(MarketAgent):
+class TimeDependentAgent(FactorAgent):
+    """
+    Abstract helper class to create agents that have time-dependent strategies.
+    """
+    def get_offer(self, observation):
+        if not isinstance(observation, tuple):
+            raise ValueError("Expected tuple observation!")
+        obs  = observation[0]
+        time = observation[1]
+        return self.compute_offer(obs, time)
+
+    def compute_offer(self, observation, time):
+        """
+        Compute the offer based on observation and time.
+        """
+        raise NotImplementedError
+
+
+class TimeLinearAgent(TimeDependentAgent):
+    """
+    Agent that linearly decreases/increases its offer price.
+
+    This agent starts with a high offer and linearly decreases/increases its
+    price until it reaches its reservation price.
+
+    Parameters
+    ----------
+    max_factor: float, optional (default=0.5)
+        Must be between 0 and 1, determines the offer range of the agent.
+    noise: float, optional (default=1.0)
+        The standard deviation of the noise added to the computed price.
+    max_steps: int, optional (default=20)
+        Number of steps until the agent offers its reservation price. This
+        determines how quickly the agent lowers/increases his price.
+    """
+
+    def __init__(self, role, reservation_price, max_factor=0.5,
+                 noise=1.0, max_steps=20, name=None):
+        super().__init__(role, reservation_price, name, max_factor)
+        self.max_steps = max_steps
+        self.noise = noise
+        self._slope = (self._b - self._a)/self.max_steps
+
+    def compute_offer(self, observation, time):
+        t = max(time,  self.max_steps)
+        noise = np.random.normal(scale=self.noise)
+        return self._c*self.reservation_price + t*self._slope + noise
+
+
+class GymRLAgent(FactorAgent):
     """
     A market agent with reinforcement learning model.
 
@@ -114,16 +194,8 @@ class GymRLAgent(MarketAgent):
                  discretization=20, max_factor=0.5):
         self.model = model
         self.discretization = discretization
-        self.max_factor = max_factor
-        super().__init__(role, reservation_price, name)
-
-        r = reservation_price
-        self._s = (-1 if role == 'buyer' else 1) # sign changes based on role
-        self._c = (1 + self._s * max_factor)
-
-        self._a = min(r, self._c*r) # minimum agent can offer
-        self._b = max(r, self._c*r) # maximum agent can offer
         self._N = discretization
+        super().__init__(role, reservation_price, name, max_factor)
 
     def get_offer(self, observation):
         if not self.model:

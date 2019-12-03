@@ -35,3 +35,12 @@ def test_rl_agent_disc():
     assert b.normalize(-1) == 0
     assert s.normalize(-1) == 0
 
+
+def test_linear_agent():
+    b = TimeLinearAgent('buyer', 100, noise=0)
+    s = TimeLinearAgent('seller', 100, noise=0)
+
+    # Buyers should increase and sellers should decrease their price
+    b.get_offer((None, 0)) < b.get_offer((None, 1))
+    s.get_offer((None, 0)) > s.get_offer((None, 1))
+
