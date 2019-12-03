@@ -51,7 +51,7 @@ def test_deal_info(market):
     m = market(10,10)
     setting = DealInformationSetting(5)
 
-    # Initial state should be of shape (2, 5)
+    # Initial state should be of shape (5,)
     assert setting.get_states([0], m)[0].shape == (5,)
 
     # It should contain deals made, not necessarily sorted on deal price value
@@ -60,3 +60,25 @@ def test_deal_info(market):
         setting.get_states([0, 10], m)[0],
         [100, 95, 0, 0, 0],
     )
+
+
+@pytest.mark.parametrize("base_setting", [
+    BlackBoxSetting(),
+    OfferInformationSetting(5),
+    DealInformationSetting(5)
+])
+def test_time_wrapper(market, base_setting):
+    m = market(10,10)
+    setting = TimeInformationWrapper(base_setting)
+
+    init_state = setting.get_states([0], m)[0]
+    assert type(init_state) == tuple
+    # The first coordinate should be an entry of base_setting
+    assert base_setting.observation_space.contains(init_state[0])
+    # Second coordinate should be the time
+    assert init_state[1] == 0
+
+    # It should increase the time if step is called
+    m.step({0: 100, 1:100})
+    next_state = setting.get_states([0], m)[0]
+    assert next_state[1] == 1

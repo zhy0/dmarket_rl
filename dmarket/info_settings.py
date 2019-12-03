@@ -1,5 +1,5 @@
 import numpy as np
-from gym.spaces import Discrete, Box
+from gym.spaces import Discrete, Box, Tuple
 
 class InformationSetting:
     """
@@ -104,7 +104,6 @@ class OfferInformationSetting(InformationSetting):
         return {agent_id: offers for agent_id in agent_ids}
 
 
-
 class DealInformationSetting(InformationSetting):
     """
     The agent is aware of N deals of the last round.
@@ -138,3 +137,33 @@ class DealInformationSetting(InformationSetting):
             deals = np.pad(deals, (0, n-len(deals))) # Pad it with zeros
         else: deals = np.zeros(n)
         return {agent_id: deals for agent_id in agent_ids}
+
+
+class TimeInformationWrapper(InformationSetting):
+    """
+    Wrapper to include the time in the observation.
+
+    This class takes as input another information setting and adds the time
+    of the market to the observations of that information setting. This allows
+    certain fixed agents to adopt time-dependent strategies.
+
+    Parameters
+    ----------
+    base_setting: InformationSetting object
+        The base information setting to add time to.
+    max_steps: int, optional (default=30)
+        This should be the same as the ``max_steps`` parameter in the market
+        engine, as it determines the maximum number of time steps there can be.
+    """
+    def __init__(self, base_setting, max_steps=30):
+        self.base_setting = base_setting
+        self.max_steps = max_steps
+        self.observation_space = Tuple((base_setting.observation_space,
+                                        Discrete(max_steps)))
+
+    def get_states(self, agent_ids, market):
+        base_obs = self.base_setting.get_states(agent_ids, market)
+        result = {}
+        for agent_id, obs in base_obs.items():
+            result[agent_id] = (obs, market.time)
+        return result
