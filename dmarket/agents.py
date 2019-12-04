@@ -150,8 +150,8 @@ class TimeLinearAgent(TimeDependentAgent):
         determines how quickly the agent lowers/increases his price.
     """
 
-    def __init__(self, role, reservation_price, max_factor=0.5,
-                 noise=1.0, max_steps=20, name=None):
+    def __init__(self, role, reservation_price, name=None, max_factor=0.5,
+                 noise=1.0, max_steps=20):
         super().__init__(role, reservation_price, name, max_factor)
         self.max_steps = max_steps
         self.noise = noise
