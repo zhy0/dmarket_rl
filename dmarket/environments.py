@@ -5,123 +5,6 @@ from dmarket.engine import MarketEngine
 from dmarket.info_settings import TimeInformationWrapper
 
 
-class SingleAgentTrainingEnv(gym.Env):
-    """
-    OpenAI Gym environment for single agent training.
-
-    Parameters
-    ----------
-    rl_agent: GymRLAgent object
-        The settings of the RL agent to train for. This determines the action
-        space.
-
-    fixed_agents: list
-        A list of MarketAgent objects that have implemented the ``get_offer``
-        method. These will serve as other agents in the market.
-
-    setting: InformationSetting object
-        This determines the observation space of the agent.
-
-    max_steps: int
-        Maximum number of rounds before a single market game terminates. This
-        is passed on to the market engine.
-
-    Attributes
-    ----------
-    action_space: Discrete object
-        The actions the RL agent can take.
-
-    observation_space: Box object
-        The space in which obervations are elements of.
-
-    market: MarketEngine object
-        The market object used
-
-    Notes
-    -----
-    If using settings that contain market time information, the RL agent will
-    NOT have access to the time. This is because at the moment baselines
-    algorithms do not support Tuple observation spaces.
-
-    """
-    def __init__(self, rl_agent, fixed_agents, setting, max_steps=30):
-
-        self.rl_agent = rl_agent
-        self.fixed_agents = fixed_agents
-        self.fixed_agent_ids = [id(agent) for agent in fixed_agents]
-        self.action_space = Discrete(rl_agent.discretization)
-        self.setting = setting
-
-        if isinstance(setting, TimeInformationWrapper):
-            self.observation_space = setting.base_setting.observation_space
-            self.rl_setting = setting.base_setting
-        else:
-            self.observation_space = setting.observation_space
-            self.rl_setting = setting
-
-        buyer_ids =  [
-            id(agent)
-            for agent in fixed_agents + [rl_agent]
-            if agent.role == 'buyer'
-        ]
-        seller_ids =  [
-            id(agent)
-            for agent in fixed_agents + [rl_agent]
-            if agent.role == 'seller'
-        ]
-
-        self.market = MarketEngine(buyer_ids, seller_ids, max_steps)
-
-    def reset(self):
-        """Resets the current environment."""
-        self.market.reset()
-        return self.rl_setting.get_state(id(self.rl_agent), self.market)
-
-    def get_offers(self, agents, observations):
-        """Compute offers for a list of agents given their observations."""
-        offers = {
-            id(agent): agent.get_offer(observations[id(agent)])
-            for agent in agents
-        }
-        return offers
-
-
-    def get_reward(self, agent, deals):
-        """
-        Compute the reward for the RL agent given the set of deals.
-
-        The reward is simply the difference between the deal price and the
-        agents reservation price.
-        """
-        if not id(agent) in deals:
-            return 0
-
-        deal_price = deals[id(agent)]
-        if agent.role == 'buyer':
-            return agent.reservation_price - deal_price
-        else:
-            return deal_price - agent.reservation_price
-
-
-    def step(self, action):
-        """Compute the next state of the market."""
-        observations = self.setting.get_states(self.fixed_agent_ids, self.market)
-        # Get all fixed agents that haven't been matched yet
-        agents = [
-            agent for agent in self.fixed_agents
-            if id(agent) not in self.market.done
-        ]
-        offers = self.get_offers(agents, observations)
-        offers[id(self.rl_agent)] = self.rl_agent.action_to_price(action)
-
-        deals = self.market.step(offers)
-        observation = self.rl_setting.get_state(id(self.rl_agent), self.market)
-        reward = self.get_reward(self.rl_agent, deals)
-        done = (id(self.rl_agent) in self.market.done)
-
-        return observation, reward, done, {}
-
-
 class MultiAgentTrainingEnv(gym.Env):
     """
     OpenAI Gym environment for training multiple agents simultaneously.
@@ -135,9 +18,11 @@ class MultiAgentTrainingEnv(gym.Env):
 
     Parameters
     ----------
-    agents: list
-        A list of tuples with agent id, role, and reservation price.
-        The role must either be the string 'buyer' or 'seller'.
+    rl_agents: list
+        A list of RL agent objects, must be instances of ``GymRLAgent``.
+    fixed_agents: list
+        A list of fixed agents. All instances must implement the ``get_offer``
+        function.
     setting: InformationSetting object
         The information setting of the market environment.
     discretization: int, optional (default=20)
@@ -154,80 +39,58 @@ class MultiAgentTrainingEnv(gym.Env):
     ----------
     observation_space: Box object
         Derived from ``setting`` parameter.
-    action_space: Discrete object
-        Discrete action space derived from ``discretization``.
     market: MarketEngine object
         The underlying market engine object.
-    agents: dict
-        Internal dictionary of agent data indexed by agent id. It contains
-        a tuple consisting of role (-1 for buyer, +1 for seller), reservation
-        price, minimum offer price and maximum offer price.
     """
-    def __init__(self, agents, setting, discretization=20,
-                 max_factor=0.5, max_steps=30):
+    def __init__(self, rl_agents, fixed_agents, setting, max_factor=0.5,
+                 max_steps=30):
 
-        self.observation_space = Box(low=-np.inf, high=np.inf,
-                                     shape=setting.observation_space.shape)
-        self.action_space = Discrete(discretization)
+        self.rl_agents = {
+            rl_agent.name: rl_agent for rl_agent in rl_agents
+        }
+        self.fixed_agents = {
+            fixed_agent.name: fixed_agent for fixed_agent in fixed_agents
+        }
+        self.all_agents = {}
+        self.all_agents.update(self.rl_agents)
+        self.all_agents.update(self.fixed_agents)
+
+        if isinstance(setting, TimeInformationWrapper):
+            self.observation_space = setting.base_setting.observation_space
+            self.rl_setting = setting.base_setting
+        else:
+            self.observation_space = setting.observation_space
+            self.rl_setting = setting
+
         self.setting = setting
-        self.discretization = discretization
+        self.observation_space = Box(
+            low=-np.inf, high=np.inf,
+            shape=self.rl_setting.observation_space.shape
+        )
 
-        self.agents = self._init_agent_data(agents, discretization, max_factor)
-        buyer_ids  = [a_id for a_id, data in self.agents.items() if data[0] == -1]
-        seller_ids = [a_id for a_id, data in self.agents.items() if data[0] == +1]
-
+        buyer_ids =  [
+            agent.name
+            for agent in self.all_agents.values()
+            if agent.role == 'buyer'
+        ]
+        seller_ids =  [
+            agent.name
+            for agent in self.all_agents.values()
+            if agent.role == 'seller'
+        ]
         self.market = MarketEngine(buyer_ids, seller_ids, max_steps)
 
-    @staticmethod
-    def _init_agent_data(agents, discretization, max_factor):
-        """Initialize the agent data. """
-        result = {}
-        for agent_id, role, res_price in agents:
-            sign = (-1 if role == 'buyer' else 1)
-            c = 1 + sign*max_factor
-            a = min(res_price, c*res_price)
-            b = max(res_price, c*res_price)
-            result[agent_id] = (sign, res_price, a, b)
-        return result
 
-
-
-    def _scale_observations(self, observations):
-        """
-        Scale the observations of each agent according to their reservation
-        price.
-        """
-        result = {}
-        for agent_id, obs in observations.items():
-            sign, res_price, _, _ = self.agents[agent_id]
-            result[agent_id] = np.heaviside(obs, 0) * sign *\
-                (obs  - res_price)/res_price
-        return result
-
-
-    def _actions_to_prices(self, actions):
-        """
-        Convert action of each agent to a price according on their reservation
-        price.
-        """
-        result = {}
-        for agent_id, action in actions.items():
-            N = self.discretization
-            m = N/2
-            l = action - N/2
-            s, _, a, b =  self.agents[agent_id]
-            result[agent_id] = ((m - l*s)*a + (m + l*s)*b)/N
-        return result
-
-
-    def _get_rewards(self, agents, deals):
+    def _get_rewards(self, agent_ids, deals):
         """
         Compute the reward of each agent given the deals in the last round.
         """
         result = {}
-        for agent_id in agents:
+        for agent_id in agent_ids:
             if agent_id in deals:
-                sign, res_price, _, _ = self.agents[agent_id]
+                agent = self.all_agents[agent_id]
+                sign = (-1 if agent.role == 'buyer' else +1)
+                res_price = agent.reservation_price
                 result[agent_id] = (deals[agent_id] - res_price)*sign
             else:
                 result[agent_id] = 0
@@ -244,7 +107,7 @@ class MultiAgentTrainingEnv(gym.Env):
             Initial observations for all agents.
         """
         self.market.reset()
-        return self.setting.get_states(self.agents.keys(), self.market)
+        return self.rl_setting.get_states(self.rl_agents.keys(), self.market)
 
 
     def step(self, actions):
@@ -268,18 +131,57 @@ class MultiAgentTrainingEnv(gym.Env):
             Contains additionally a string key ``__all__`` to indicate
             whether every agent is done.
         """
-        agent_ids = actions.keys()
-        deals = self.market.step(
-            self._actions_to_prices(actions)
-        )
-        obs = self._scale_observations(
-            self.setting.get_states(agent_ids, self.market)
-        )
-        done = {
-            agent_id: (agent_id in self.market.done)
-            for agent_id in agent_ids
+        # Get dict of fixed agents that aren't yet done
+        other_agents = {
+            agent.name: agent for agent in self.fixed_agents.values()
+            if agent.name not in self.market.done
         }
-        done["__all__"] = (self.market.done == self.agents.keys())
-        rew = self._get_rewards(agent_ids, deals)
+
+        # First get offers of other fixed agents
+        obs = self.setting.get_states(other_agents.keys(), self.market)
+        offers = {
+            agent.name: agent.get_offer(obs[agent.name])
+            for agent in other_agents.values()
+        }
+
+        # Update offers with RL offers from the actions dict
+        rl_agent_ids = set(actions.keys())
+        for rl_agent_id in rl_agent_ids:
+            offers[rl_agent_id] = self.rl_agents[rl_agent_id].action_to_price(
+                actions[rl_agent_id]
+            )
+
+        # Step the market
+        deals = self.market.step(offers)
+
+        # Obs, done, rewards for RL agents
+        obs = self.rl_setting.get_states(rl_agent_ids, self.market)
+        for rl_agent_id in obs.keys(): # Normalize each observation
+            obs[rl_agent_id] = self.rl_agents[rl_agent_id].normalize(
+                obs[rl_agent_id]
+            )
+        done = {
+            rl_agent_id: (rl_agent_id in self.market.done)
+            for rl_agent_id in rl_agent_ids
+        }
+        done["__all__"] = (rl_agent_ids.issubset(self.market.done))
+        rew = self._get_rewards(rl_agent_ids, deals)
         return obs, rew, done, {}
 
+
+class SingleAgentTrainingEnv(MultiAgentTrainingEnv):
+    def __init__(self, rl_agent, fixed_agents, setting, max_steps=30):
+        self.rl_agent = rl_agent
+        self.action_space = Discrete(rl_agent.discretization)
+        super().__init__([rl_agent], fixed_agents, setting, max_steps)
+
+    def reset(self):
+        return super().reset()[self.rl_agent.name]
+
+    def step(self, action):
+        obs, rew, done, _ = super().step({
+            self.rl_agent.name: action
+        })
+        return obs[self.rl_agent.name], \
+               rew[self.rl_agent.name], \
+              done[self.rl_agent.name], _
