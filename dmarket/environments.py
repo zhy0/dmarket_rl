@@ -10,11 +10,7 @@ class MultiAgentTrainingEnv(gym.Env):
     OpenAI Gym environment for training multiple agents simultaneously.
 
     This environment is designed for training multiple agents at the same time.
-    The environment does the conversion from discrete action space to prices
-    based on reservation prices. Therefore, it might not be suitable when other
-    non-RL agents need to be in the environment (unless these also have
-    discrete action spaces). This environment is compatible with RLlib's
-    ``MultiAgentEnv``.
+    This environment is compatible with RLlib's ``MultiAgentEnv``.
 
     Parameters
     ----------
@@ -170,6 +166,31 @@ class MultiAgentTrainingEnv(gym.Env):
 
 
 class SingleAgentTrainingEnv(MultiAgentTrainingEnv):
+    """
+    Gym environment for training single RL agents.
+
+    This environment is compatible with stable_baselines.
+
+    Parameters
+    ----------
+    rl_agent: GymRLAgent object
+        The reinforcement learning agent to be trained. The environment derives
+        action space and observation space from this object.
+    fixed_agents: list
+        A list of fixed agents. All instances must implement the ``get_offer``
+        function.
+    setting: InformationSetting object
+        The information setting of the market environment.
+    discretization: int, optional (default=20)
+        The number of different offers the agents can make. This determines the
+        action space of the agents.
+    max_factor: float, optional (default=0.5)
+        A factor of the reservation price that determines the range of prices
+        the agents can offer.
+    max_steps: int, optional (default=30)
+        Maximum number of rounds before a single market game terminates. This
+        is passed on to the market engine.
+    """
     def __init__(self, rl_agent, fixed_agents, setting, max_steps=30):
         self.rl_agent = rl_agent
         self.action_space = Discrete(rl_agent.discretization)
