@@ -21,12 +21,6 @@ class MultiAgentTrainingEnv(gym.Env):
         function.
     setting: InformationSetting object
         The information setting of the market environment.
-    discretization: int, optional (default=20)
-        The number of different offers the agents can make. This determines the
-        action space of the agents.
-    max_factor: float, optional (default=0.5)
-        A factor of the reservation price that determines the range of prices
-        the agents can offer.
     max_steps: int, optional (default=30)
         Maximum number of rounds before a single market game terminates. This
         is passed on to the market engine.
@@ -38,8 +32,7 @@ class MultiAgentTrainingEnv(gym.Env):
     market: MarketEngine object
         The underlying market engine object.
     """
-    def __init__(self, rl_agents, fixed_agents, setting, max_factor=0.5,
-                 max_steps=30):
+    def __init__(self, rl_agents, fixed_agents, setting, max_steps=30):
 
         self.rl_agents = {
             rl_agent.name: rl_agent for rl_agent in rl_agents
@@ -181,12 +174,6 @@ class SingleAgentTrainingEnv(MultiAgentTrainingEnv):
         function.
     setting: InformationSetting object
         The information setting of the market environment.
-    discretization: int, optional (default=20)
-        The number of different offers the agents can make. This determines the
-        action space of the agents.
-    max_factor: float, optional (default=0.5)
-        A factor of the reservation price that determines the range of prices
-        the agents can offer.
     max_steps: int, optional (default=30)
         Maximum number of rounds before a single market game terminates. This
         is passed on to the market engine.
