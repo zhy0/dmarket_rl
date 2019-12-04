@@ -155,10 +155,10 @@ class TimeLinearAgent(TimeDependentAgent):
         super().__init__(role, reservation_price, name, max_factor)
         self.max_steps = max_steps
         self.noise = noise
-        self._slope = (self._b - self._a)/self.max_steps
+        self._slope = -self._s * (self._b - self._a)/self.max_steps
 
     def compute_offer(self, observation, time):
-        t = max(time,  self.max_steps)
+        t = min(time,  self.max_steps)
         noise = np.random.normal(scale=self.noise)
         return self._c*self.reservation_price + t*self._slope + noise
 

@@ -41,6 +41,6 @@ def test_linear_agent():
     s = TimeLinearAgent('seller', 100, noise=0)
 
     # Buyers should increase and sellers should decrease their price
-    b.get_offer((None, 0)) < b.get_offer((None, 1))
-    s.get_offer((None, 0)) > s.get_offer((None, 1))
+    assert b.get_offer((None, 0)) < b.get_offer((None, 1))
+    assert s.get_offer((None, 0)) > s.get_offer((None, 1))
 
